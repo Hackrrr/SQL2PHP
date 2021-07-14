@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="cs" style="overflow: hidden" class="has-background-light">
+
+<head>
+    <title>SQL2PHP</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css">
+    <script type="text/javascript" src="fa-all.js"></script>
+    <script type="text/javascript" src="JSZip.js"></script>
+    <script type="text/javascript" src="FileSaver.js"></script>
+    <script type="text/javascript" src="SQL2PHP.js"></script>
+    <script type="text/javascript" src="handler.js"></script>
+    <style>
+        html,
+        body,
+        #main,
+        #input {
+            height: 100%;
+        }
+
+        #main {
+            margin: 2em;
+        }
+
+        textarea {
+            width: 100%;
+        }
+
+        #messageHolder {
+            position: absolute;
+            width: 100%;
+            bottom: 0;
+            opacity: 0;
+            transition: 1s;
+        }
+        #messageInnerHolder {
+            width: 50%;
+            margin: 0 auto;
+            background-color: #f14668;
+            border-radius: 50%  50%  0  0;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="main" class="columns is-vcentered is-centered">
+        <div class="column is-3 box">
+            <nav class="panel is-success">
+                <p class="panel-heading">SQL2PHP</p>
+                <a class="panel-block is-active" onclick="showInput()">
+                    <span class="panel-icon"><i class="fas fa-file-alt" aria-hidden="true"></i></span>
+                    Input
+                </a>
+                <div id="files">
+                    <!-- <a class="panel-block">
+                        <span class="panel-icon"><i class="fas fa-file-alt" aria-hidden="true"></i></span>
+                        Objects.php
+                    </a>
+                    <a class="panel-block">
+                        <span class="panel-icon"><i class="fas fa-file-alt" aria-hidden="true"></i></span>
+                        Database.php
+                    </a>
+                    <a class="panel-block">
+                        <span class="panel-icon"><i class="fas fa-file-alt" aria-hidden="true"></i></span>
+                        MyDB.php
+                    </a>
+                    <a class="panel-block">
+                        <span class="panel-icon"><i class="fas fa-file-alt" aria-hidden="true"></i></span>
+                        MyDB2.php
+                    </a> -->
+                </div>
+                <div class="panel-block">
+                    <button id="generate" class="button is-link is-outlined is-fullwidth">
+                        Generate
+                    </button>
+                </div>
+                <!-- We need to use HTTPS to use Clipboard API and ... well, maybe someday... -->
+                <!-- <div class="panel-block">
+                    <button id="copy" class="button is-link is-outlined is-fullwidth">
+                        Copy current file
+                    </button>
+                </div> -->
+                <div class="panel-block">
+                    <button id="download" class="button is-link is-outlined is-fullwidth">
+                        Download current file
+                    </button>
+                </div>
+                <div class="panel-block">
+                    <button id="downloadAll" class="button is-link is-outlined is-fullwidth">
+                        Download all
+                    </button>
+                </div>
+            </nav>
+        </div>
+        <div class="column" style="height: 100%">
+            <textarea id="input" class="textarea has-fixed-size" placeholder="Enter SQL here..."></textarea>
+        </div>
+    </div>
+    <div id="messageHolder">
+        <div id="messageInnerHolder">
+            <article class="message is-danger">
+                <div class="message-header">
+                    <p id="messageText"></p>
+                    <button class="delete" aria-label="delete" onclick="el_messageHolder.style.opacity = 0;"></button>
+                </div>
+            </article>
+        </div>
+    </div>
+</body>
+
+</html>

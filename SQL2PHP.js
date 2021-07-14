@@ -1,42 +1,11 @@
 /*
-This scipt will generate PHP 8.x or 7.x compatible code (probrally 5.x too) based on SQL
-
 //TODO: Foreign key on composite primary key:
         FOREIGN KEY (xxx0, xxx1, xxx2)
             REFERENCES yyy (zzz0, zzz1, zzz2)
         (https://stackoverflow.com/questions/10565846/use-composite-primary-key-as-foreign-key)
 //TODO: Emit warning on table name collision in different DBs (because of shared "Objects.php")
-//TODO: GetByIndex
+//TODO: GetByIndex (INDEX, UNIQUE, ...)
 */
-
-let inpt = ``; // If no input specified you will be prompted for it on run()
-/*
-let inpt = `
-CREATE DATABASE DatabázeVšechDatabází;
-USE DatabázeVšechDatabází;
-CREATE TABLE MojeTabulkaČolády (
-    ID INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
-    BarvaČokolády VARCHAR(255)
-);
-`;
-*/
-
-
-// =============== CONFIG ===============
-const autoRun = true;
-const PHP7compatible = false;
-const DefaultDB = "UNDEFINED_DATABASE";
-const generateFiles = Object.freeze({ //TODO: This
-    "Main.php": true,
-    "Database.php": true,
-});
-const indent = " ".repeat(4);
-const throwOnWarning = true;
-// =============== CONFIG ===============
-
-
-if (throwOnWarning)
-    console.warn = (...data) => {throw data[0];}
 
 /**
  * @enum {number}
@@ -144,7 +113,7 @@ class Column {
             case Type.BOOL:
                 return `$assoc["${this.name}"] === null ? null : (bool)$assoc["${this.name}"]`;
             default:
-                console.warn("Unknown type: " + this.type);
+                throw new Error("Unknown type: " + this.type);
         }
     }
 }
@@ -278,7 +247,7 @@ class OutputFile {
      * @param {string} content 
      * @param {string} fileIndent
      */
-    constructor(name, content = "", fileIndent = indent) {
+    constructor(name, content = "", fileIndent = "    ") {
         this.name = name;
         this.content = content;
         this.indent = fileIndent;
@@ -396,17 +365,28 @@ function parseSQL(SQL, {
         output.push(trim ? current.trim() : current);
     return output;
 }
-function SQL2PHP(input) {
-    if (!input)
-        input = prompt("Enter SQL:");
+/**
+ * 
+ * @param {string} input 
+ * @returns {Object.<string, OutputFile>}
+ */
+function SQL2PHP(input, {
+    PHP7compatible = false,
+    DefaultDB = "UNDEFINED_DATABASE",
+    generateFiles = {
+        "Main.php": true,
+        "Database.php": true,
+    },
+    indent = " ".repeat(4),
+} = {}) {
     if (input === null || input.trim() === "")
         throw new Error("No input");
-    
     /**
      * @type {Object.<string, Database>}
      */
     let DBs = {};
     let currentDB = new Database(DefaultDB);
+    DBs[currentDB.name] = currentDB;
     /**
      * @param {string} name 
      * @param {Database} targetDB
@@ -497,21 +477,25 @@ function SQL2PHP(input) {
             currentDB = DBs[match[1]];
             continue;
         }
-        console.warn(`Unknown statement '${statement}'`);
+        throw new Error(`Unknown statement '${statement}'`);
     }
 
     // SQL PARSED, NOW TO CODE GEN!
-    let objFile = new OutputFile("Objects.php");
+    let objFile = new OutputFile("Objects.php", "", indent);
     objFile.writeLine("<?php");
     let output = {"Objects.php": objFile};
     for (let DB of Object.values(DBs)) {
-        let f = new OutputFile(`${DB.name}.php`);
+        if (DB.tables == 0)
+            continue;
+        let f = new OutputFile(`${DB.name}.php`, "", indent);
         output[f.name] = f;
 
         f.writeLine("<?php");
         // DB CLASS
         f.writeLine(`class ${DB.name} {`, 0, 1);
         for (let t of DB.tables) {
+            if (t.primaryKey == null) // As whole codegen relies on primary key(s), there is nothing we can do here
+                continue;
             f.writeLine(`/** @return ${t.name}[] */`);
             f.writeLine(`public static function GetAll${t.name}(${t.foreginKeys.length == 0 ? "" : "bool $resolve = false"}) : array {`, 0, 1);
                 f.writeLine(`$output = [];`);
@@ -578,6 +562,8 @@ function SQL2PHP(input) {
                 f.writeLine(`Database::ExecuteAsPrepared("INSERT INTO ${t.name} (${t.columns.filter(x=>!x.autoIncrement).map(x=>x.name).join(", ")}) VALUES(${Array(t.columns.filter(x=>!x.autoIncrement).length).fill("?").join(",")})", "${t.columns.filter(x=>!x.autoIncrement).map(x=>x.preparedType).join("")}", [${t.columns.filter(x=>!x.autoIncrement).map(x=>"$"+x.name).join(", ")}]);`);
                 f.writeLine(`return Database::$Connection->insert_id;`);
             f.writeLine("}", -1);
+            if (t.primaryKey == null)
+                continue;
             f.writeLine(`public static function Delete${t.name}(${t.primaryKey.columns.map(x=>x.PHPDef).join(", ")}) {`, 0, 1);
                 f.writeLine(`Database::ExecuteAsPrepared("DELETE FROM Foto WHERE ${t.primaryKey.columns.map(x=>`${x.name} = ?`).join(" AND ")}", "${t.primaryKey.columns.map(x=>x.preparedType).join("")}", [${t.primaryKey.columns.map(x=>`$${x.name}`).join(", ")}]);`);
             f.writeLine("}", -1);
@@ -663,4 +649,3 @@ function SQL2PHP(input) {
     objFile.writeLine("?>");
     return output;
 }
-if (autoRun) window["output"] = SQL2PHP(inpt);
