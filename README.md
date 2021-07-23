@@ -1,6 +1,8 @@
 # SQL2PHP
 Simple script/application for generating PHP code based on SQL. Can be used as application (Github pages) or can be used as script and integrated into something else.
 
+You can either try it [here](https://hackrrr.github.io/SQL2PHP/) or download [SQL2PHP.js](/SQL2PHP.js) and implement it in your application.
+
 # Output
 Code will generate these files:
 - `Objects.php` - File with all PHP class definitions
