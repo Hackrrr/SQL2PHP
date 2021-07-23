@@ -415,6 +415,8 @@ function SQL2PHP(input, {
             || statement.toUpperCase().startsWith("FLUSH")
             || statement.toUpperCase().startsWith("GRANT")
             || statement.toUpperCase().startsWith("DROP")
+            || statement.toUpperCase().startsWith("SELECT")
+            || statement.toUpperCase().startsWith("INSERT")
             || statement.match(/^CREATE\s+USER/i)
             || statement.match(/^CREATE\s+DATABASE/i)
             ) continue;

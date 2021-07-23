@@ -74,23 +74,7 @@ onload = () => {
 
     
     el_generate.onclick = () => {
-        let input = el_input.hasAttribute("readonly") ? lastInput : el_input.value;
-        if (input == "")
-            return;
-        let files;
-        try {
-            files = SQL2PHP(input, options);
-        } catch (e) {
-            showError(e);
-            return;
-        }
-        el_files.innerHTML = "";
-        for (let file of Object.values(files))
-            addFileToList(file);
-        lastOutput = files;
-
-        if (currentFile !== null && currentFile.name in files)
-            showFile(files[currentFile.name]);
+        generate();
     };
 
     
@@ -125,6 +109,26 @@ onload = () => {
     el_modalCloseButton.onclick = el_modalButton.onclick;
 };
 
+function generate() {
+    let input = el_input.hasAttribute("readonly") ? lastInput : el_input.value;
+    if (input == "")
+        return;
+    let files;
+    try {
+        files = SQL2PHP(input, options);
+    } catch (e) {
+        showError(e);
+        return;
+    }
+    el_files.innerHTML = "";
+    for (let file of Object.values(files))
+        addFileToList(file);
+    lastOutput = files;
+
+    if (currentFile !== null && currentFile.name in files)
+        showFile(files[currentFile.name]);
+}
+
 function getSettings() {
     options.PHP8syntax = el_modal_PHP8.checked;
     options.defaultDB = el_modal_defaultDB.value;
@@ -133,4 +137,17 @@ function getSettings() {
     options.indent = el_modal_indent.value;
     if (options.indent == "")
         options.indent = " ".repeat(4);
+}
+
+
+
+
+function drop(e) {
+    e.preventDefault();
+    let file = e.dataTransfer.files[0];
+    if (!file || !("text" in file)) return;
+    file.text().then((x) => {
+        el_input.value = x;
+        generate();
+    });
 }
