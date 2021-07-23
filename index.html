@@ -52,24 +52,7 @@
                     <span class="panel-icon"><i class="fas fa-file-alt" aria-hidden="true"></i></span>
                     Input
                 </a>
-                <div id="files">
-                    <!-- <a class="panel-block">
-                        <span class="panel-icon"><i class="fas fa-file-alt" aria-hidden="true"></i></span>
-                        Objects.php
-                    </a>
-                    <a class="panel-block">
-                        <span class="panel-icon"><i class="fas fa-file-alt" aria-hidden="true"></i></span>
-                        Database.php
-                    </a>
-                    <a class="panel-block">
-                        <span class="panel-icon"><i class="fas fa-file-alt" aria-hidden="true"></i></span>
-                        MyDB.php
-                    </a>
-                    <a class="panel-block">
-                        <span class="panel-icon"><i class="fas fa-file-alt" aria-hidden="true"></i></span>
-                        MyDB2.php
-                    </a> -->
-                </div>
+                <div id="files"></div>
                 <div class="panel-block">
                     <button id="generate" class="button is-link is-outlined is-fullwidth">
                         Generate
@@ -91,6 +74,11 @@
                         Download all
                     </button>
                 </div>
+                <div class="panel-block">
+                    <button id="options" class="button is-link is-outlined is-fullwidth">
+                        Options
+                    </button>
+                </div>
             </nav>
         </div>
         <div class="column" style="height: 100%">
@@ -105,6 +93,45 @@
                     <button class="delete" aria-label="delete" onclick="el_messageHolder.style.opacity = 0;"></button>
                 </div>
             </article>
+        </div>
+    </div>
+    <div id="modal" class="modal">
+        <div class="modal-background"></div>
+        <div class="modal-card">
+            <header class="modal-card-head">
+                <p class="modal-card-title">Options</p>
+                <button id="modalClose" class="delete" aria-label="close"></button>
+            </header>
+            <section class="modal-card-body">
+
+                <div class="field">
+                    <label class="label">Default DB name</label>
+                    <div class="control">
+                        <input id="modal_defaultDB" class="input" type="text" placeholder="Default: UNDEFINED_DATABASE">
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="label">Indent</label>
+                    <div class="control">
+                        <input id="modal_indent" class="input" type="text" placeholder="Default: 4x whitespace">
+                    </div>
+                </div>
+
+
+                <div class="field">
+                    <div class="control">
+                        <label class="checkbox">
+                            <input id="modal_PHP8" type="checkbox" checked="true">
+                            Use PHP 8 syntax
+                        </label>
+                    </div>
+                </div>
+
+            </section>
+            <footer class="modal-card-foot">
+                <button id="modalCloseButton" class="button is-success">Close</button>
+            </footer>
         </div>
     </div>
 </body>

@@ -5,6 +5,7 @@
         (https://stackoverflow.com/questions/10565846/use-composite-primary-key-as-foreign-key)
 //TODO: Emit warning on table name collision in different DBs (because of shared "Objects.php")
 //TODO: GetByIndex (INDEX, UNIQUE, ...)
+//TODO: Custom name patters
 */
 
 /**
@@ -70,7 +71,7 @@ class Column {
      */
     constructor(name, type, type_extra, nullable, autoIncrement, primaryKey = null, foreignKey = null) {
         this.name = name;
-        this.type = TypeMapping[type];
+        this.type = TypeMapping[type.toUpperCase()];
         if (typeof this.type == "function")
             this.type = this.type(type_extra);
         this.type_extra = type_extra;
@@ -371,8 +372,8 @@ function parseSQL(SQL, {
  * @returns {Object.<string, OutputFile>}
  */
 function SQL2PHP(input, {
-    PHP7compatible = false,
-    DefaultDB = "UNDEFINED_DATABASE",
+    PHP8syntax = true,
+    defaultDB = "UNDEFINED_DATABASE",
     generateFiles = {
         "Main.php": true,
         "Database.php": true,
@@ -385,7 +386,7 @@ function SQL2PHP(input, {
      * @type {Object.<string, Database>}
      */
     let DBs = {};
-    let currentDB = new Database(DefaultDB);
+    let currentDB = new Database(defaultDB);
     DBs[currentDB.name] = currentDB;
     /**
      * @param {string} name 
@@ -581,17 +582,17 @@ function SQL2PHP(input, {
         // OBJECTS
         for (let t of DB.tables) {
             objFile.writeLine(`class ${t.name} {`, 0, 1);
-                if (PHP7compatible)
+                if (!PHP8syntax)
                     for (let c of t.columns)
                         objFile.writeLine(`${c.generateCtorDef()};`);
                 for (let k of t.foreginKeys)
                     objFile.writeLine(`public ?${k.remoteColumn.table.name} $${k.localColumn.name} = null;`); //TODO: Emit warning on name collision
                 objFile.writeLine(`public function __construct(`, 0, 1);
                     for (let c of t.columns)
-                        objFile.writeLine(PHP7compatible ? `${c.PHPType} $${c.nameForeignKeyAware},` : `${c.generateCtorDef()},`);
+                        objFile.writeLine(PHP8syntax ? `${c.generateCtorDef()},` : `${c.PHPType} $${c.nameForeignKeyAware},` );
                     if (t.foreginKeys.length != 0)
                         objFile.writeLine("bool $resolve = true,"); //TODO: Emit warning on name collision
-                if (PHP7compatible) {
+                if (!PHP8syntax) {
                     objFile.writeLine(") {", -1, 1);
                     for (let c of t.columns)
                         objFile.writeLine(`$this->${c.nameForeignKeyAware} = $${c.nameForeignKeyAware};`);

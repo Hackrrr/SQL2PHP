@@ -1,12 +1,14 @@
-let el_files, el_generate, el_copy, el_download, el_downloadAll, el_input, el_messageHolder, el_messageText;
-let input = "";
+let el_files, el_generate, el_copy, el_download, el_downloadAll, el_input, el_messageHolder, el_messageText,
+    el_modalButton, el_modalHolder, el_modalClose, el_modalCloseButton,
+    el_modal_PHP8, el_modal_defaultDB, el_modal_indent;
+let lastInput = "";
 /** @type {?OutputFile} */
 let currentFile = null;
 /** @type {OutputFile[]|null} */
 let lastOutput = null;
 let options = {
-    PHP7compatible: false,
-    DefaultDB: "UNDEFINED_DATABASE",
+    PHP8syntax: true,
+    defaultDB: "UNDEFINED_DATABASE",
     generateFiles: {
         "Main.php": true,
         "Database.php": true,
@@ -34,7 +36,7 @@ function addFileToList(file, color = null) {
 /** @param {OutputFile} file */
 function showFile(file) {
     if (!el_input.hasAttribute("readonly"))
-        input = el_input.value;
+        lastInput = el_input.value;
     currentFile = file;
     el_input.value = file.content;
     el_input.setAttribute("readonly", "true");
@@ -44,7 +46,7 @@ function showInput() {
         return;
     currentFile = null;
     el_input.removeAttribute("readonly");
-    el_input.value = input;
+    el_input.value = lastInput;
 }
 function showError(e) {
     messageText.innerText = e.message;
@@ -60,8 +62,19 @@ onload = () => {
     el_messageHolder = document.getElementById("messageHolder");
     el_messageText = document.getElementById("messageText");
 
+    el_modalButton = document.getElementById("options");
+    el_modalHolder = document.getElementById("modal");
+    el_modalClose = document.getElementById("modalClose");
+    el_modalCloseButton = document.getElementById("modalCloseButton");
+
+    el_modal_PHP8 = document.getElementById("modal_PHP8");
+    el_modal_defaultDB = document.getElementById("modal_defaultDB");
+    el_modal_indent = document.getElementById("modal_indent");
+
+
+    
     el_generate.onclick = () => {
-        let input = el_input.value;
+        let input = el_input.hasAttribute("readonly") ? lastInput : el_input.value;
         if (input == "")
             return;
         let files;
@@ -75,6 +88,9 @@ onload = () => {
         for (let file of Object.values(files))
             addFileToList(file);
         lastOutput = files;
+
+        if (currentFile !== null && currentFile.name in files)
+            showFile(files[currentFile.name]);
     };
 
     
@@ -100,4 +116,21 @@ onload = () => {
             saveAs(blob, "SQL2PHP.zip");
         });
     };
+
+    el_modalButton.onclick = () => {
+        el_modalHolder.classList.toggle("is-active");
+        getSettings(); // Called even on open but who cares LULW
+    };
+    el_modalClose.onclick = el_modalButton.onclick;
+    el_modalCloseButton.onclick = el_modalButton.onclick;
 };
+
+function getSettings() {
+    options.PHP8syntax = el_modal_PHP8.checked;
+    options.defaultDB = el_modal_defaultDB.value;
+    if (options.defaultDB == "")
+        options.defaultDB = "UNDEFINED_DATABASE";
+    options.indent = el_modal_indent.value;
+    if (options.indent == "")
+        options.indent = " ".repeat(4);
+}
