@@ -15,9 +15,10 @@
 const Type = Object.freeze({
     STRING: 0,
     NUMBER: 1,
-    DATETIME: 2,
-    ENUM: 3,
-    BOOL: 4,
+    FLOAT: 2,
+    DATETIME: 3,
+    ENUM: 4,
+    BOOL: 5,
 });
 /**
  * @enum {Type}
@@ -26,11 +27,26 @@ const Type = Object.freeze({
  */
 const TypeMapping = Object.freeze({
     "VARCHAR": Type.STRING,
+    "CHAR": Type.STRING,
     "TEXT": Type.STRING,
+    "MEDIUMTEXT": Type.STRING,
+
+    // Not sure about these...
+    "BLOB": Type.STRING,
+    "MEDIUMBLOB": Type.STRING,
+
     "INT": Type.NUMBER,
-    "DATETIME": Type.DATETIME,
-    "ENUM": Type.ENUM,
+    "BIGINT": Type.NUMBER,
+    "SMALLINT": Type.NUMBER,
+    "TINYINT": Type.NUMBER,
     "BIT": type_extra => type_extra == "1" ? Type.BOOL : Type.NUMBER,
+
+    "DOUBLE": Type.FLOAT,
+    "FLOAT": Type.FLOAT,
+
+    "DATETIME": Type.DATETIME,
+    "TIMESTAMP": Type.DATETIME, // And unsure about this too...
+    "ENUM": Type.ENUM,
 });
 /**
  * @enum {string}
@@ -39,6 +55,7 @@ const TypeMapping = Object.freeze({
 const SQLType2PHPType = Object.freeze({
     [Type.STRING]: "string",
     [Type.NUMBER]: "int",
+    [Type.FLOAT]: "float",
     [Type.DATETIME]: "int",
     [Type.ENUM]: "string",
     [Type.BOOL]: "bool",
@@ -51,6 +68,7 @@ const SQLType2PHPType = Object.freeze({
 const PHPType2PreparedType = Object.freeze({
     "string": "s",
     "int": "i",
+    "float": "i",
     "bool": "i",
 });
 
@@ -72,6 +90,8 @@ class Column {
     constructor(name, type, type_extra, nullable, autoIncrement, primaryKey = null, foreignKey = null) {
         this.name = name;
         this.type = TypeMapping[type.toUpperCase()];
+        if (this.type === undefined)
+            throw new Error(`Undefined type '${type}'`);
         if (typeof this.type == "function")
             this.type = this.type(type_extra);
         this.type_extra = type_extra;
@@ -107,6 +127,7 @@ class Column {
         switch (this.type) {
             case Type.STRING:
             case Type.NUMBER:
+            case Type.FLOAT:
             case Type.ENUM:
                 return `$assoc["${this.name}"]`;
             case Type.DATETIME:
@@ -114,7 +135,7 @@ class Column {
             case Type.BOOL:
                 return `$assoc["${this.name}"] === null ? null : (bool)$assoc["${this.name}"]`;
             default:
-                throw new Error("Unknown type: " + this.type);
+                throw new Error(`There is no parser method for type '${this.type}'`);
         }
     }
 }
@@ -410,8 +431,6 @@ function SQL2PHP(input, {
     let match;
     for (let statement of parsed) {
         if (statement == ""
-            || statement.toUpperCase().startsWith("/*")
-            || statement.toUpperCase().startsWith("#")
             || statement.toUpperCase().startsWith("FLUSH")
             || statement.toUpperCase().startsWith("GRANT")
             || statement.toUpperCase().startsWith("DROP")
@@ -421,7 +440,7 @@ function SQL2PHP(input, {
             || statement.match(/^CREATE\s+DATABASE/i)
             ) continue;
         
-        match = statement.match(/^CREATE\s+TABLE\s+(.+?)\s*\(((?:.|\s)*)\)(?:ENGINE\s*=.+)?$/i);
+        match = statement.match(/^CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+[`"']?((?:(?<=`)(?:.+)(?=`))|(?:(?<=")(?:.+)(?="))|(?:(?<=')(?:.+)(?='))|(?:.+?))[`"']?\s*\(((?:.|\s)*)\)\s*(?:(?:ENGINE\s*=.+)|(?:AUTO_INCREMENT\s+=\s+\d+)|(?:DEFAULT\s+CHARSET=\w+))*$/i);
         if (match !== null) {
             let table = new Table(match[1]);
             currentDB.addTable(table);
@@ -433,9 +452,9 @@ function SQL2PHP(input, {
             })) {
                 if (definition == "" || definition.toUpperCase().startsWith("INDEX")) continue;
 
-                match = definition.match(/PRIMARY\s+KEY\s*\((.+)\)$/i);
+                match = definition.match(/PRIMARY\s+KEY\s*\([`"']?((?:(?<=`)(?:.+)(?=`))|(?:(?<=")(?:.+)(?="))|(?:(?<=')(?:.+)(?='))|(?:.+))[`"']?\)$/i);
                 if (match !== null) {
-                    let columns = match[1].split(/\s*,\s*/);
+                    let columns = match[1].split(/[`"']?\s*,\s*[`"']?/);
                     table.addPrimaryKey(new PrimaryKey(columns.map(x=>table.getColumn(x))));
                     continue;
                 }
@@ -453,7 +472,13 @@ function SQL2PHP(input, {
                     continue;
                 }
 
-                match = definition.match(/^\s*(.+?)\s+(.+?)(?:\((.*?)\))?(?:(?!$)\s(.+?))?$/i);
+                match = definition.match(/(?:(?:KEY)|(?:INDEX))\s+[`"']?((?:(?<=`)(?:.+)(?=`))|(?:(?<=")(?:.+)(?="))|(?:(?<=')(?:.+)(?='))|(?:.+?))[`"']?\s*\([`"']?((?:(?<=`)(.+)(?=`))|((?<=")(.+)(?="))|((?<=')(.+)(?='))|(?:.+))[`"']?\)$/i);
+                if (match !== null) {
+                    //TODO: This
+                    continue;
+                }
+
+                match = definition.match(/^\s*[`"']?((?:(?<=`)(?:.+)(?=`))|(?:(?<=")(?:.+)(?="))|(?:(?<=')(?:.+)(?='))|(?:.+?))[`"']?\s+(.+?)(?:\((.*?)\))?(?:(?!$)\s(.+?))?$/i);
                 let name = match[1];
                 let type = match[2];
                 let type_extra = match[3];
@@ -473,7 +498,7 @@ function SQL2PHP(input, {
         //     DBs[match[1]] = new Database(match[1]);
         //     continue;
         // }
-        match = statement.match(/USE\s+(.*)$/i);
+        match = statement.match(/^USE\s+[`"']?((?:(?<=`)(?:.+)(?=`))|(?:(?<=")(?:.+)(?="))|(?:(?<=')(?:.+)(?='))|(?:.+))[`"']?$/i);
         if (match !== null) {
             if (!(match[1] in DBs))
                 DBs[match[1]] = new Database(match[1]);
