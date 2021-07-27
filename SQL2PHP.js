@@ -8,6 +8,64 @@
 //TODO: Custom name patters
 */
 
+
+const DATABASE_FILE = `<?php
+define("DATABASE_HOST", "localhost");
+define("DATABASE_USER", "user");
+define("DATABASE_PASSWORD", "password");
+define("DATABASE_NAME", "name");
+
+class Database {
+    public static ?mysqli $Connection = null;
+    public static function EnsureConnection() {
+        try {
+            self::$Connection = new mysqli(DATABASE_HOST, DATABASE_USER, DATABASE_PASSWORD, DATABASE_NAME);
+        } catch (Exception $e_normal) {
+            die("DB connection error");
+        }
+    }
+    public static function Execute(string $query, bool $ensureConnection = true) : mysqli_result {
+        if ($ensureConnection)
+            self::EnsureConnection();
+
+        try {
+            if (!($result = self::$Connection->query($query)))
+                die("DB query failure");
+            return $result;
+        } catch (Exception $e) {
+            die("DB query execution error");
+        }
+    }
+
+/*
+Reference for types, taken from https://www.php.net/manual/en/mysqli-stmt.bind-param.php:
+i	corresponding variable has type integer
+d	corresponding variable has type double
+s	corresponding variable has type string
+b	corresponding variable is a blob and will be sent in packets
+*/
+    public static function ExecuteAsPrepared(string $query, string $types, array $params, bool $ensureConnection = true) : mysqli_result {
+        if ($ensureConnection)
+            self::EnsureConnection();
+        try {
+            $prepared = self::$Connection->prepare($query);
+            if ($prepared === false)
+                die("Prepared DB query preparation failure");
+            $prepared->bind_param($types, ...$params);
+            if (!$prepared->execute())
+                die("Prepared DB query failure");
+            $result = $prepared->get_result();
+            if ($result === false)
+                die("Prepared DB query result error");
+            $prepared->close();
+            return $result;
+        } catch (Exception $e) {
+            die("Prepared DB query execution error");
+        }
+    }
+}
+?>`;
+
 /**
  * @enum {number}
  * @readonly
@@ -143,10 +201,14 @@ class Column {
 class Table {
     /** @type {Column[]} */
     columns = [];
+
     /** @type {?PrimaryKey} */
     primaryKey = null;
     /** @type {ForeignKey[]} */
     foreginKeys = [];
+    /** @type {Index[]} */
+    indexes = [];
+
     /** @type {ForeignKey[]} */
     remotelyReferencedBy = [];
 
@@ -192,6 +254,10 @@ class Table {
         });
         this.primaryKey = key;
     }
+    /** @param {Index} index  */
+    addIndex(index) {
+        this.indexes.push(index);
+    }
 }
 class ForeignKey {
     /**
@@ -215,6 +281,8 @@ class ForeignKey {
     }
 }
 class PrimaryKey {
+    /** @type {Table} */
+    table = null;
     /** @param {Column[]} columns */
     constructor(columns) {
         this.table = columns[0].table;
@@ -230,6 +298,32 @@ class PrimaryKey {
 
     generateName() {
         return this.columns.map(x=>x.name).join("");
+    }
+
+    generatePHPDef(separator = ", ") {
+        return this.columns.map(x=>x.PHPDef).join(separator);
+    }
+}
+class Index {
+    /** @type {Table} */
+    table = null;
+    /**
+     * @param {?string} name
+     * @param {Column[]} columns
+     * @param {boolean} unique
+     * */
+    constructor(name, columns, unique) {
+        this.name = name;
+        this.table = columns[0].table;
+        for (let column of columns)
+            if (this.table != column.table)
+                throw new Error("All columns assigned in 'INDEX'/'KEY' must be in same table");
+        this.columns = columns;
+        this.unique = unique;
+    }
+
+    generateName() {
+        return this.name != null ? this.name :columns.map(x=>x.name).join("");
     }
 
     generatePHPDef(separator = ", ") {
@@ -290,7 +384,17 @@ class OutputFile {
     }
 }
 
-
+/*
+Although this is named "parseSQL", it can parse anything I guess...
+E.g. we using this to parse base SQL but later on we using it to parse table definitions
+↓↓↓
+TODO: Upgrade this to support everything: (and rename ("parse()" maybe?))
+    multiple delimiters
+    custom comment sequences
+    custom nestables
+    custom brackets
+    modify delimiter change rules
+*/
 function parseSQL(SQL, {
     delimiter = ";",
     trim = false,
@@ -396,7 +500,7 @@ function SQL2PHP(input, {
     PHP8syntax = true,
     defaultDB = "UNDEFINED_DATABASE",
     generateFiles = {
-        "Main.php": true,
+        // "Main.php": true,
         "Database.php": true,
     },
     indent = " ".repeat(4),
@@ -423,6 +527,7 @@ function SQL2PHP(input, {
             name = splitted[1];
         }
         return targetDB.getTable(name) ?? (function(){throw new Error(`Table "${name}" not found in DB "${targetDB.name}"`)}); // Něco proti? PepeLaugh TeaTime A pak že IIFE je k ničemu :)
+        // Jasně, mohl bych napsat "if (targetDB.getTable(name) == null) throw ...", ale to je moc jednoduchý LULW
     }
 
     let parsed = parseSQL(input, {
@@ -472,9 +577,12 @@ function SQL2PHP(input, {
                     continue;
                 }
 
-                match = definition.match(/(?:(?:KEY)|(?:INDEX))\s+[`"']?((?:(?<=`)(?:.+)(?=`))|(?:(?<=")(?:.+)(?="))|(?:(?<=')(?:.+)(?='))|(?:.+?))[`"']?\s*\([`"']?((?:(?<=`)(.+)(?=`))|((?<=")(.+)(?="))|((?<=')(.+)(?='))|(?:.+))[`"']?\)$/i);
+                match = definition.match(/^(UNIQUE\s+)?(?:(?:KEY)|(?:INDEX))\s+[`"']?((?:(?<=`)(?:.+)(?=`))|(?:(?<=")(?:.+)(?="))|(?:(?<=')(?:.+)(?='))|(?:.+?))[`"']?\s*\([`"']?((?:(?<=`)(.+)(?=`))|((?<=")(.+)(?="))|((?<=')(.+)(?='))|(?:.+))[`"']?\)$/i);
                 if (match !== null) {
-                    //TODO: This
+                    let unique = Boolean(match[1]);
+                    let name = match[2];
+                    let columns = match[3].split(/[`"']?\s*,\s*[`"']?/);
+                    table.addIndex(new Index(name, columns.map(x=>table.getColumn(x)), unique));
                     continue;
                 }
 
@@ -493,11 +601,6 @@ function SQL2PHP(input, {
             continue;
         }
 
-        // match = statement.match(/CREATE\s+DATABASE\s+(.*?)(?:\s|$)/i);
-        // if (match !== null) {
-        //     DBs[match[1]] = new Database(match[1]);
-        //     continue;
-        // }
         match = statement.match(/^USE\s+[`"']?((?:(?<=`)(?:.+)(?=`))|(?:(?<=")(?:.+)(?="))|(?:(?<=')(?:.+)(?='))|(?:.+))[`"']?$/i);
         if (match !== null) {
             if (!(match[1] in DBs))
@@ -522,50 +625,73 @@ function SQL2PHP(input, {
         // DB CLASS
         f.writeLine(`class ${DB.name} {`, 0, 1);
         for (let t of DB.tables) {
-            if (t.primaryKey == null) // As whole codegen relies on primary key(s), there is nothing we can do here
-                continue;
-            f.writeLine(`/** @return ${t.name}[] */`);
-            f.writeLine(`public static function GetAll${t.name}(${t.foreginKeys.length == 0 ? "" : "bool $resolve = false"}) : array {`, 0, 1);
-                f.writeLine(`$output = [];`);
-                f.writeLine(`$result = Database::Execute("SELECT * FROM ${t.name}");`);
-                f.writeLine(`while ($row = $result->fetch_assoc())`);
-                    f.writeLine(`$output[] = ${t.name}::ParseAssoc($row${t.foreginKeys.length == 0 ? "" : ", $resolve"});`, 1, -1);
-                f.writeLine(`$result->free();`);
-                f.writeLine(`return $output;`);
-            f.writeLine(`}`, -1);
+            if (t.primaryKey != null) {
+                // All this codegen relies on primary key(s), there isn't much we can do...
+                f.writeLine(`/** @return ${t.name}[] */`);
+                f.writeLine(`public static function GetAll${t.name}(${t.foreginKeys.length == 0 ? "" : "bool $resolve = false"}) : array {`, 0, 1);
+                    f.writeLine(`$output = [];`);
+                    f.writeLine(`$result = Database::Execute("SELECT * FROM ${t.name}");`);
+                    f.writeLine(`while ($row = $result->fetch_assoc())`);
+                        f.writeLine(`$output[] = ${t.name}::ParseAssoc($row${t.foreginKeys.length == 0 ? "" : ", $resolve"});`, 1, -1);
+                    f.writeLine(`$result->free();`);
+                    f.writeLine(`return $output;`);
+                f.writeLine(`}`, -1);
 
-            f.writeLine(`public static function Get${t.name}(${t.primaryKey.generatePHPDef()}${t.foreginKeys.length == 0 ? "" : ", bool $resolve = true"}) : ?${t.name} {`, 0, 1);
-                f.writeLine(`$result = Database::ExecuteAsPrepared("SELECT * FROM ${t.name} WHERE ${t.primaryKey.columns.map(x=>`${x.name} = ?`).join(" AND ")} LIMIT 1", "${t.primaryKey.columns.map(x=>x.preparedType).join("")}", [${t.primaryKey.columns.map(x=>`$${x.name}`).join(", ")}]);`);
-                f.writeLine(`$row = $result->fetch_assoc();`);
-                f.writeLine(`if ($row == null) return null;`);
-                f.writeLine(`$output = ${t.name}::ParseAssoc($row${t.foreginKeys.length == 0 ? "" : ", $resolve"});`);
-                f.writeLine(`$result->free();`);
-                f.writeLine(`return $output;`);
-            f.writeLine(`}`, -1);
+                f.writeLine(`public static function Get${t.name}(${t.primaryKey.generatePHPDef()}${t.foreginKeys.length == 0 ? "" : ", bool $resolve = true"}) : ?${t.name} {`, 0, 1);
+                    f.writeLine(`$result = Database::ExecuteAsPrepared("SELECT * FROM ${t.name} WHERE ${t.primaryKey.columns.map(x=>`${x.name} = ?`).join(" AND ")} LIMIT 1", "${t.primaryKey.columns.map(x=>x.preparedType).join("")}", [${t.primaryKey.columns.map(x=>`$${x.name}`).join(", ")}]);`);
+                    f.writeLine(`$row = $result->fetch_assoc();`);
+                    f.writeLine(`if ($row == null) return null;`);
+                    f.writeLine(`$output = ${t.name}::ParseAssoc($row${t.foreginKeys.length == 0 ? "" : ", $resolve"});`);
+                    f.writeLine(`$result->free();`);
+                    f.writeLine(`return $output;`);
+                f.writeLine(`}`, -1);
 
-            f.writeLine(`/**`);
-            f.writeLine(` * @param (${t.primaryKey.columns.map(x=>x.PHPType).filter((x,y,z)=>z.indexOf(x)===y).join("|")})${t.primaryKey.isSimple ? '' : '[]'}[] $identifiers${t.primaryKey.isSimple ? "" : ` [ ..., [${t.primaryKey.columns.map(x=>`$${x.name}`).join(", ")}], ...]`}`);
-            f.writeLine(` * @return ${t.name}[]`);
-            f.writeLine(` */`);
-            f.writeLine(`public static function Get${t.name}Pack(array $identifiers${t.foreginKeys.length == 0 ? "" : ", bool $resolve = true"}) : array {`, 0, 1);
-                f.writeLine(`$count = count($identifiers);`);
-                f.writeLine(`if ($count == 0) return [];`);
-                f.writeLine(`$output = [];`);
-                if (t.primaryKey.isSimple)
-                    f.writeLine(`$result = Database::ExecuteAsPrepared("SELECT * FROM ${t.name} WHERE ${t.primaryKey.columns[0].name} IN (".implode(",",array_fill(0, $count, "?")).")", str_repeat("${t.primaryKey.columns[0].preparedType}", $count), $identifiers);`);
-                else
-                    f.writeLine(`$result = Database::ExecuteAsPrepared("SELECT * FROM ${t.name} WHERE ".implode(" OR ", array_fill(0, $count, "(${t.primaryKey.columns.map(x=>`${x.name} = ?`).join(" AND ")})")), str_repeat("${t.primaryKey.columns.map(x=>x.preparedType).join("")}", $count), array_merge(...$identifiers));`);
-                f.writeLine(`while ($row = $result->fetch_assoc())`);
-                    f.writeLine(`$output[] = ${t.name}::ParseAssoc($row${t.foreginKeys.length == 0 ? "" : ", $resolve"});`, 1, -1);
-                f.writeLine(`$result->free();`);
-                f.writeLine(`return $output;`);
-            f.writeLine(`}`, -1);
-            if (!t.primaryKey.isSimple) {
-                for (let primary of t.primaryKey.columns) {
+                f.writeLine(`/**`);
+                f.writeLine(` * @param (${t.primaryKey.columns.map(x=>x.PHPType).filter((x,y,z)=>z.indexOf(x)===y).join("|")})${t.primaryKey.isSimple ? '' : '[]'}[] $identifiers [ ..., [${t.primaryKey.columns.map(x=>`$${x.name}`).join(", ")}], ...]`);
+                f.writeLine(` * @return ${t.name}[]`);
+                f.writeLine(` */`);
+                f.writeLine(`public static function Get${t.name}Pack(array $identifiers${t.foreginKeys.length == 0 ? "" : ", bool $resolve = true"}) : array {`, 0, 1);
+                    f.writeLine(`$count = count($identifiers);`);
+                    f.writeLine(`if ($count == 0) return [];`);
+                    f.writeLine(`$output = [];`);
+                    if (t.primaryKey.isSimple)
+                        f.writeLine(`$result = Database::ExecuteAsPrepared("SELECT * FROM ${t.name} WHERE ${t.primaryKey.columns[0].name} IN (".implode(",",array_fill(0, $count, "?")).")", str_repeat("${t.primaryKey.columns[0].preparedType}", $count), $identifiers);`);
+                    else
+                        f.writeLine(`$result = Database::ExecuteAsPrepared("SELECT * FROM ${t.name} WHERE ".implode(" OR ", array_fill(0, $count, "(${t.primaryKey.columns.map(x=>`${x.name} = ?`).join(" AND ")})")), str_repeat("${t.primaryKey.columns.map(x=>x.preparedType).join("")}", $count), array_merge(...$identifiers));`);
+                    f.writeLine(`while ($row = $result->fetch_assoc())`);
+                        f.writeLine(`$output[] = ${t.name}::ParseAssoc($row${t.foreginKeys.length == 0 ? "" : ", $resolve"});`, 1, -1);
+                    f.writeLine(`$result->free();`);
+                    f.writeLine(`return $output;`);
+                f.writeLine(`}`, -1);
+                if (!t.primaryKey.isSimple) {
+                    for (let primary of t.primaryKey.columns) {
+                        f.writeLine(`/** @return ${t.name}[] */`);
+                        f.writeLine(`public static function Get${t.name}PackBy${primary.name}(${primary.PHPDef}${t.foreginKeys.length == 0 ? "" : ", bool $resolve = true"}) : array {`, 0, 1);
+                            f.writeLine(`$output = [];`);
+                            f.writeLine(`$result = Database::ExecuteAsPrepared("SELECT * FROM ${t.name} WHERE ${primary.name} = ?", "${primary.preparedType}", [$${primary.name}]);`);
+                            f.writeLine(`while ($row = $result->fetch_assoc())`);
+                                f.writeLine(`$output[] = ${t.name}::ParseAssoc($row${t.foreginKeys.length == 0 ? "" : ", $resolve"});`, 1, -1);
+                            f.writeLine(`$result->free();`);
+                            f.writeLine(`return $output;`);
+                        f.writeLine(`}`, -1);
+                    }
+                }
+            }
+            for (let i of t.indexes) {
+                if (i.unique) {
+                    f.writeLine(`public static function Get${t.name}By${i.generateName()}(${i.generatePHPDef()}${t.foreginKeys.length == 0 ? "" : ", bool $resolve = true"}) : ?${t.name} {`, 0, 1);
+                        f.writeLine(`$result = Database::ExecuteAsPrepared("SELECT * FROM ${t.name} WHERE ${i.columns.map(x=>`${x.name} = ?`).join(" AND ")} LIMIT 1", "${i.columns.map(x=>x.preparedType).join("")}", [${i.columns.map(x=>`$${x.name}`).join(", ")}]);`);
+                        f.writeLine(`$row = $result->fetch_assoc();`);
+                        f.writeLine(`if ($row == null) return null;`);
+                        f.writeLine(`$output = ${t.name}::ParseAssoc($row${t.foreginKeys.length == 0 ? "" : ", $resolve"});`);
+                        f.writeLine(`$result->free();`);
+                        f.writeLine(`return $output;`);
+                    f.writeLine(`}`, -1);
+                } else {
                     f.writeLine(`/** @return ${t.name}[] */`);
-                    f.writeLine(`public static function Get${t.name}PackBy${primary.name}(${primary.PHPDef}${t.foreginKeys.length == 0 ? "" : ", bool $resolve = true"}) : array {`, 0, 1);
+                    f.writeLine(`public static function GetAll${t.name}By${i.generateName()}(${i.generatePHPDef()}${t.foreginKeys.length == 0 ? "" : ", bool $resolve = false"}) : array {`, 0, 1);
                         f.writeLine(`$output = [];`);
-                        f.writeLine(`$result = Database::ExecuteAsPrepared("SELECT * FROM ${t.name} WHERE ${primary.name} = ?", "${primary.preparedType}", [$${primary.name}]);`);
+                        f.writeLine(`$result = Database::Execute("SELECT * FROM ${t.name} WHERE ${i.columns.map(x=>`${x.name} = ?`).join(" AND ")}", "${i.columns.map(x=>x.preparedType).join("")}", [${i.columns.map(x=>`$${x.name}`).join(", ")}]);`);
                         f.writeLine(`while ($row = $result->fetch_assoc())`);
                             f.writeLine(`$output[] = ${t.name}::ParseAssoc($row${t.foreginKeys.length == 0 ? "" : ", $resolve"});`, 1, -1);
                         f.writeLine(`$result->free();`);
@@ -675,5 +801,9 @@ function SQL2PHP(input, {
         }
     }
     objFile.writeLine("?>");
+
+    if (generateFiles["Database.php"])
+        output["Database.php"] = new OutputFile("Database.php", DATABASE_FILE);
+
     return output;
 }

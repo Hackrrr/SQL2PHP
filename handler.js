@@ -1,6 +1,6 @@
 let el_files, el_generate, el_copy, el_download, el_downloadAll, el_input, el_messageHolder, el_messageText,
     el_modalButton, el_modalHolder, el_modalClose, el_modalCloseButton,
-    el_modal_PHP8, el_modal_defaultDB, el_modal_indent;
+    el_modal_PHP8, el_modal_defaultDB, el_modal_indent, el_modal_generate_database;
 let lastInput = "";
 /** @type {?OutputFile} */
 let currentFile = null;
@@ -10,7 +10,7 @@ let options = {
     PHP8syntax: true,
     defaultDB: "UNDEFINED_DATABASE",
     generateFiles: {
-        "Main.php": true,
+        // "Main.php": true,
         "Database.php": true,
     },
     indent: " ".repeat(4),
@@ -70,9 +70,8 @@ onload = () => {
     el_modal_PHP8 = document.getElementById("modal_PHP8");
     el_modal_defaultDB = document.getElementById("modal_defaultDB");
     el_modal_indent = document.getElementById("modal_indent");
+    el_modal_generate_database = document.getElementById("modal_generate_database");
 
-
-    
     el_generate.onclick = () => {
         generate();
     };
@@ -131,6 +130,7 @@ function generate() {
 
 function getSettings() {
     options.PHP8syntax = el_modal_PHP8.checked;
+    options.generateFiles["Database.php"] = el_modal_generate_database.checked;
     options.defaultDB = el_modal_defaultDB.value;
     if (options.defaultDB == "")
         options.defaultDB = "UNDEFINED_DATABASE";
